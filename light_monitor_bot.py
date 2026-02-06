@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Telegram Bot для моніторингу світла з журналом та статистикою
-Підтримка декількох користувачів з персональними налаштуваннями
-"""
 
 import telebot
 import subprocess
@@ -12,30 +8,23 @@ import os
 import time
 import threading
 import logging
-import traceback
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
 import dns.resolver
 
-# ==================== КОНФІГУРАЦІЯ ====================
 BOT_TOKEN = "7956450854:AAELUrRz00JlyLdZcLJnyRL5-u4-9kW4sGY"
 PING_TIMEOUT = 5
-PING_COUNT_AUTO = 5  # Для автомоніторингу
-PING_COUNT_MANUAL = 2  # Для ручної перевірки
-CHECK_INTERVAL = 60  # 1 хвилина
+PING_COUNT_AUTO = 5
+PING_COUNT_MANUAL = 2
+CHECK_INTERVAL = 60
 
-# DNS сервер Cloudflare
 DNS_SERVER = "1.1.1.1"
 
-# Директорії та файли
 DATA_DIR = "/root/server/bot/user_data"
 USER_LOG_FILE = "/home/bot_logs/user.log"
 ERROR_LOG_FILE = "/home/bot_logs/error.log"
 
-# ==================== НАЛАШТУВАННЯ ЛОГУВАННЯ ====================
-
 def setup_logging():
-    """Налаштування логування з ротацією файлів"""
     os.makedirs(os.path.dirname(ERROR_LOG_FILE), exist_ok=True)
     
     logger = logging.getLogger('LightMonitorBot')
@@ -66,17 +55,12 @@ def setup_logging():
 
 logger = setup_logging()
 
-# ==================== ІНІЦІАЛІЗАЦІЯ ====================
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Глобальні змінні для моніторингу
 monitoring_threads = {}
 monitoring_active = {}
 
-# ==================== УПРАВЛІННЯ ФАЙЛАМИ ====================
-
 def parse_timestamp(timestamp_str):
-    """Парсинг timestamp у різних форматах (для сумісності)"""
     formats = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S.%f",
@@ -93,19 +77,15 @@ def parse_timestamp(timestamp_str):
     return datetime.now()
 
 def get_user_dir(chat_id):
-    """Отримати директорію користувача"""
     return os.path.join(DATA_DIR, str(chat_id))
 
 def get_config_file(chat_id):
-    """Отримати шлях до конфігу користувача"""
     return os.path.join(get_user_dir(chat_id), "config.json")
 
 def get_log_file(chat_id):
-    """Отримати шлях до журналу подій користувача"""
     return os.path.join(get_user_dir(chat_id), "events.json")
 
 def load_config(chat_id):
-    """Завантаження налаштувань користувача"""
     config_file = get_config_file(chat_id)
     default_config = {
         'notifications_enabled': True,
@@ -127,7 +107,6 @@ def load_config(chat_id):
     return default_config
 
 def save_config(chat_id, config):
-    """Збереження налаштувань користувача"""
     try:
         os.makedirs(get_user_dir(chat_id), exist_ok=True)
         config_file = get_config_file(chat_id)
@@ -138,7 +117,6 @@ def save_config(chat_id, config):
         logger.error("Помилка збереження конфігу для chat_id={}: {}".format(chat_id, e), exc_info=True)
 
 def load_events(chat_id):
-    """Завантаження журналу подій користувача"""
     log_file = get_log_file(chat_id)
     try:
         if os.path.exists(log_file):
@@ -151,7 +129,6 @@ def load_events(chat_id):
     return []
 
 def save_event(chat_id, status, details):
-    """Збереження події в журнал"""
     try:
         events = load_events(chat_id)
         event = {
@@ -174,7 +151,6 @@ def save_event(chat_id, status, details):
         logger.error("❌ Помилка збереження події для chat_id={}: {}".format(chat_id, e), exc_info=True)
 
 def get_last_status(chat_id):
-    """Отримати останній статус"""
     try:
         events = load_events(chat_id)
         if events:
@@ -186,7 +162,6 @@ def get_last_status(chat_id):
     return None
 
 def log_user_action(chat_id, username, domain, action):
-    """Логування дій користувачів (анонімно на сервері)"""
     try:
         os.makedirs(os.path.dirname(USER_LOG_FILE), exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -199,10 +174,7 @@ def log_user_action(chat_id, username, domain, action):
     except Exception as e:
         logger.error("Помилка логування дії користувача: {}".format(e), exc_info=True)
 
-# ==================== DNS РЕЗОЛВІНГ ====================
-
 def resolve_domain(domain):
-    """Резолвінг домену через Cloudflare DNS 1.1.1.1"""
     try:
         resolver = dns.resolver.Resolver()
         resolver.nameservers = [DNS_SERVER]
@@ -218,10 +190,7 @@ def resolve_domain(domain):
         logger.error("Помилка резолвінгу домену {}: {}".format(domain, e), exc_info=True)
     return None
 
-# ==================== ПІНГУВАННЯ ====================
-
 def ping_host(hostname, timeout=5, count=1):
-    """Пінгує хост з множинними пакетами через резолвінг 1.1.1.1"""
     try:
         logger.debug("Початок пінгу домену: {} (пакетів: {})".format(hostname, count))
         
@@ -279,11 +248,8 @@ def ping_host(hostname, timeout=5, count=1):
         logger.error("Помилка пінгу {}: {}".format(hostname, e), exc_info=True)
         return False, "❌ Помилка: {}".format(str(e))
 
-# ==================== ОБРОБНИКИ ====================
-
 @bot.message_handler(commands=['start'])
 def start_handler(message):
-    """Стартове меню з запитом домену"""
     chat_id = message.chat.id
     username = message.from_user.username
     logger.info("Команда /start від chat_id={}, username=@{}".format(chat_id, username))
@@ -309,7 +275,6 @@ def start_handler(message):
         bot.send_message(chat_id, "❌ Помилка запуску. Спробуйте ще раз.")
 
 def process_initial_domain(message):
-    """Обробка першого введення домену"""
     chat_id = message.chat.id
     username = message.from_user.username
     domain = message.text.strip()
@@ -346,7 +311,6 @@ def process_initial_domain(message):
         bot.send_message(chat_id, "❌ Помилка налаштування. Спробуйте ще раз.")
 
 def show_main_menu(chat_id, domain):
-    """Показати головне меню"""
     try:
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
         btn1 = telebot.types.KeyboardButton('💡 Перевірити')
@@ -371,7 +335,6 @@ def show_main_menu(chat_id, domain):
 
 @bot.message_handler(func=lambda m: m.text == '💡 Перевірити')
 def check_handler(message):
-    """Перевірка світла - 2 пакети"""
     chat_id = message.chat.id
     logger.info("Ручна перевірка від chat_id={}".format(chat_id))
     
@@ -392,7 +355,6 @@ def check_handler(message):
 
 @bot.message_handler(func=lambda m: m.text == '📊 Журнал')
 def journal_handler(message):
-    """Показати журнал подій з тривалістю"""
     chat_id = message.chat.id
     logger.info("Запит журналу від chat_id={}".format(chat_id))
     
@@ -450,7 +412,6 @@ def journal_handler(message):
 
 @bot.message_handler(func=lambda m: m.text == '📈 Статистика')
 def stats_handler(message):
-    """Показати статистику"""
     chat_id = message.chat.id
     logger.info("Запит статистики від chat_id={}".format(chat_id))
     
@@ -497,7 +458,6 @@ def stats_handler(message):
 
 @bot.message_handler(func=lambda m: m.text == '⚙️ Налаштування')
 def settings_handler(message):
-    """Налаштування"""
     chat_id = message.chat.id
     logger.info("Запит налаштувань від chat_id={}".format(chat_id))
     
@@ -533,7 +493,6 @@ def settings_handler(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
-    """Обробник кнопок"""
     chat_id = call.message.chat.id
     logger.info("Callback від chat_id={}: {}".format(chat_id, call.data))
     
@@ -578,7 +537,6 @@ def callback_handler(call):
         logger.error("Помилка в callback_handler для chat_id={}: {}".format(chat_id, e), exc_info=True)
 
 def process_domain_change(message):
-    """Обробка зміни домену"""
     chat_id = message.chat.id
     username = message.from_user.username
     domain = message.text.strip()
@@ -611,10 +569,7 @@ def process_domain_change(message):
         logger.error("Помилка в process_domain_change для chat_id={}: {}".format(chat_id, e), exc_info=True)
         bot.send_message(chat_id, "❌ Помилка зміни домену.")
 
-# ==================== АВТОМОНІТОРИНГ ====================
-
 def monitoring_loop(chat_id):
-    """Фоновий моніторинг - 5 пакетів кожну хвилину"""
     logger.info("🚀🚀🚀 ЗАПУЩЕНО моніторинг для chat_id={}".format(chat_id))
     
     try:
@@ -704,7 +659,6 @@ def monitoring_loop(chat_id):
         logger.info("🛑🛑🛑 ЗАВЕРШЕНО моніторинг для chat_id={}".format(chat_id))
 
 def start_user_monitoring(chat_id):
-    """Запуск моніторингу для користувача"""
     try:
         if chat_id in monitoring_active and monitoring_active[chat_id]:
             if chat_id in monitoring_threads and monitoring_threads[chat_id].is_alive():
@@ -720,7 +674,6 @@ def start_user_monitoring(chat_id):
         logger.error("❌ Помилка запуску моніторингу для chat_id={}: {}".format(chat_id, e), exc_info=True)
 
 def stop_user_monitoring(chat_id):
-    """Зупинка моніторингу для користувача"""
     try:
         if chat_id in monitoring_active:
             monitoring_active[chat_id] = False
@@ -730,10 +683,7 @@ def stop_user_monitoring(chat_id):
     except Exception as e:
         logger.error("❌ Помилка зупинки моніторингу для chat_id={}: {}".format(chat_id, e), exc_info=True)
 
-# ==================== ЗАПУСК ====================
-
 def main():
-    """Запуск бота"""
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         os.makedirs(os.path.dirname(USER_LOG_FILE), exist_ok=True)
